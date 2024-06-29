@@ -1,9 +1,7 @@
-
-from flask import Flask, request, jsonify, render_template_string
 import json
 import re
 import shlex
-import os
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
@@ -114,60 +112,26 @@ def generate_make_config(url, method, qs, headers):
     }
     return json.dumps(config, indent=4)
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    result = ""
-    if request.method == 'POST':
-        curl_command = request.form['curl_command']
-        try:
-            url, method, qs, headers = parse_curl_command(curl_command)
-            result = generate_make_config(url, method, qs, headers)
-        except Exception as e:
-            result = f"Error: {str(e)}"
+@app.route('/', methods=['GET'])
+def home():
+    return "Welcome to cURL to Make.com HTTP Module Converter. Send a POST request to /convert with your cURL command."
 
-    return render_template_string('''
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>cURL to Make.com HTTP Module Converter</title>
-            <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
-                h1 { color: #333; }
-                form { margin-bottom: 20px; }
-                textarea { width: 100%; height: 150px; }
-                pre { background-color: #f4f4f4; padding: 10px; overflow-x: auto; }
-            </style>
-        </head>
-        <body>
-            <h1>cURL to Make.com HTTP Module Converter</h1>
-            <form method="post">
-                <textarea name="curl_command" placeholder="Enter your cURL command here">{{ request.form['curl_command'] }}</textarea>
-                <br><br>
-                <input type="submit" value="Convert">
-            </form>
-            {% if result %}
-                <h2>Result:</h2>
-                <pre>{{ result }}</pre>
-            {% endif %}
-        </body>
-        </html>
-    ''', result=result)
-
-@app.route('/api/convert', methods=['POST'])
-def api_convert():
+@app.route('/convert', methods=['POST'])
+def convert():
     data = request.json
     if not data or 'curl_command' not in data:
-        return jsonify({"error": "No cURL command provided"}), 400
+        return jsonify({"error": "Missing curl_command in request body"}), 400
 
+    curl_command = data['curl_command']
+    
     try:
-        url, method, qs, headers = parse_curl_command(data['curl_command'])
-        result = generate_make_config(url, method, qs, headers)
-        return jsonify({"result": json.loads(result)})
-    except Exception as e:
+        url, method, qs, headers = parse_curl_command(curl_command)
+        make_config = generate_make_config(url, method, qs, headers)
+        return jsonify({"make_config": json.loads(make_config)})
+    except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=10000)
