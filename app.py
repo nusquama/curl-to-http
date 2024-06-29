@@ -1,9 +1,63 @@
 import json
 import re
 import shlex
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
+from flask_cors import CORS  # Add this import
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>cURL to Make.com Converter</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        textarea { width: 100%; height: 100px; margin-bottom: 10px; }
+        #result { white-space: pre-wrap; background-color: #f0f0f0; padding: 10px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>cURL to Make.com Converter</h1>
+    <form id="curlForm">
+        <textarea id="curlCommand" placeholder="Enter your cURL command here"></textarea>
+        <br>
+        <button type="submit">Convert</button>
+    </form>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('curlForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const curlCommand = document.getElementById('curlCommand').value;
+            console.log('Sending curl command:', curlCommand);  // Log the command being sent
+            fetch('/convert', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ curl_command: curlCommand }),
+            })
+            .then(response => {
+                console.log('Response status:', response.status);  // Log the response status
+                return response.json();
+            })
+            .then(data => {
+                console.log('Received data:', data);  // Log the received data
+                document.getElementById('result').innerText = JSON.stringify(data, null, 2);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = 'Error: ' + error.message;
+            });
+        });
+    </script>
+</body>
+</html>
+"""
 
 def parse_curl_command(curl_command):
     # Replace newlines and multiple spaces with a single space
@@ -110,28 +164,35 @@ def generate_make_config(url, method, qs, headers):
             "version": 1
         }
     }
-    return json.dumps(config, indent=4)
+    return config
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Welcome to cURL to Make.com HTTP Module Converter. Send a POST request to /convert with your cURL command."
+    return render_template_string(HTML_TEMPLATE)
 
 @app.route('/convert', methods=['POST'])
-def convert():
+def convert_curl_to_make():
     data = request.json
-    if not data or 'curl_command' not in data:
-        return jsonify({"error": "Missing curl_command in request body"}), 400
-
-    curl_command = data['curl_command']
+    app.logger.info(f"Received data: {data}")  # Log the received data
+    curl_command = data.get('curl_command')
+    
+    app.logger.info(f"Received curl command: {curl_command}")  # Log the received command
+    
+    if not curl_command:
+        app.logger.error("No cURL command provided")
+        return jsonify({"error": "No cURL command provided"}), 400
     
     try:
         url, method, qs, headers = parse_curl_command(curl_command)
         make_config = generate_make_config(url, method, qs, headers)
-        return jsonify({"make_config": json.loads(make_config)})
+        app.logger.info(f"Generated config: {make_config}")  # Log the generated config
+        return jsonify(make_config)
     except ValueError as e:
+        app.logger.error(f"ValueError: {str(e)}")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
+        app.logger.error(f"Unexpected error: {str(e)}")
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
-
+    
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=10000)
+    app.run(debug=True, host='0.0.0.0', port=3000)
