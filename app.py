@@ -1,16 +1,11 @@
+
+from flask import Flask, request, jsonify, render_template_string
 import json
 import re
 import shlex
-from flask import Flask
+import os
 
 app = Flask(__name__)
-
-@app.route('/')
-def hello_world():
-    return 'Hello, World!'
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
 
 def parse_curl_command(curl_command):
     # Replace newlines and multiple spaces with a single space
@@ -119,28 +114,60 @@ def generate_make_config(url, method, qs, headers):
     }
     return json.dumps(config, indent=4)
 
-def main():
-    print("cURL to Make.com HTTP Module Converter")
-    print("--------------------------------------")
-    
-    print("Enter your cURL command (press Enter twice when finished):")
-    curl_command = ""
-    while True:
-        line = input()
-        if line.strip() == "":
-            break
-        curl_command += line + "\n"
-    curl_command = curl_command.strip()
-    
-    try:
-        url, method, qs, headers = parse_curl_command(curl_command)
-        make_config = generate_make_config(url, method, qs, headers)
-        print("\nGenerated Make.com HTTP module configuration:")
-        print(make_config)
-    except ValueError as e:
-        print(f"Error: {str(e)}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {str(e)}")
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    result = ""
+    if request.method == 'POST':
+        curl_command = request.form['curl_command']
+        try:
+            url, method, qs, headers = parse_curl_command(curl_command)
+            result = generate_make_config(url, method, qs, headers)
+        except Exception as e:
+            result = f"Error: {str(e)}"
 
-if __name__ == "__main__":
-    main()
+    return render_template_string('''
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>cURL to Make.com HTTP Module Converter</title>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+                h1 { color: #333; }
+                form { margin-bottom: 20px; }
+                textarea { width: 100%; height: 150px; }
+                pre { background-color: #f4f4f4; padding: 10px; overflow-x: auto; }
+            </style>
+        </head>
+        <body>
+            <h1>cURL to Make.com HTTP Module Converter</h1>
+            <form method="post">
+                <textarea name="curl_command" placeholder="Enter your cURL command here">{{ request.form['curl_command'] }}</textarea>
+                <br><br>
+                <input type="submit" value="Convert">
+            </form>
+            {% if result %}
+                <h2>Result:</h2>
+                <pre>{{ result }}</pre>
+            {% endif %}
+        </body>
+        </html>
+    ''', result=result)
+
+@app.route('/api/convert', methods=['POST'])
+def api_convert():
+    data = request.json
+    if not data or 'curl_command' not in data:
+        return jsonify({"error": "No cURL command provided"}), 400
+
+    try:
+        url, method, qs, headers = parse_curl_command(data['curl_command'])
+        result = generate_make_config(url, method, qs, headers)
+        return jsonify({"result": json.loads(result)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
